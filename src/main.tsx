@@ -15,6 +15,7 @@ import {
 } from "@heroicons/react/16/solid";
 import { zip } from "fflate";
 import type { CropResult } from "./pdf";
+import bootpackLogo from "./assets/bootpack-horizontal.svg";
 import "./style.css";
 
 type Entry = { id: string; file: File; name: string } & (
@@ -303,18 +304,15 @@ function App() {
         <a className="wordmark" href="/" aria-label="trim-crop-marks homepage">
           trim-crop-marks
         </a>
-        <p className="local-note">
-          <span className="green-dot" />
-          Made to keep things simple.
-        </p>
+        <p className="local-note">A Bootpack Digital product</p>
       </header>
       <main>
         <section className="intro">
-          <p className="eyebrow">A little off the edges.</p>
+          <p className="eyebrow">PDF tools by Bootpack Digital</p>
           <h1>
             Your PDF.
             <br />
-            Minus the crop marks.
+            <span>Minus the crop marks.</span>
           </h1>
           <p className="intro-copy">
             Drop in your PDFs. We’ll find the crop marks and trim them away.
@@ -346,7 +344,7 @@ function App() {
             <div className="upload-content">
               <div className="upload-label">
                 <ArrowUpTrayIcon />
-                <span>LESS MARGIN. ZERO FUSS.</span>
+                <span>REMOVE PDF CROP MARKS</span>
               </div>
               <h2>
                 {dragging
@@ -543,9 +541,34 @@ function App() {
             that content from the PDF.
           </p>
         </details>
+        <section className="provider" aria-labelledby="provider-heading">
+          <div>
+            <h2 id="provider-heading">
+              <a className="brand-link" href="https://bootpackdigital.com/">
+                <img
+                  src={bootpackLogo}
+                  alt="Bootpack Digital"
+                  width="184"
+                  height="38"
+                />
+              </a>
+            </h2>
+            <p>
+              trim-crop-marks is provided by Bootpack Digital. We build
+              websites, mobile apps, and custom software. Visit our website to
+              learn more about us and our work.
+            </p>
+          </div>
+          <a
+            className="button provider-link"
+            href="https://bootpackdigital.com/"
+          >
+            Visit Bootpack Digital <ArrowRightIcon aria-hidden="true" />
+          </a>
+        </section>
       </main>
       <footer>
-        <p>A tiny tool for a tidy PDF.</p>
+        <p>trim-crop-marks by Bootpack Digital</p>
         <p>No account. No uploads. Just trim.</p>
       </footer>
     </div>
