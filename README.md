@@ -2,7 +2,7 @@
 
 A small web app that removes PDF crop marks. Drop one PDF or a batch onto the page, review the before/after preview, and download individual PDFs or a ZIP.
 
-Production URL: https://trim-crop-marks.bootpack.work/
+Production URL: https://trim-crop-marks.bootpack.dev/
 
 All PDF processing runs on the user's device. Files never go to a server, and fonts, PDF rendering resources, and the PDF worker are served with the app.
 
