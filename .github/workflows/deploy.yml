@@ -1,0 +1,123 @@
+name: Build & Deploy (Dokploy)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/checks.yml
+
+  build-and-deploy:
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_TOKEN || github.token }}
+      - name: Image metadata
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Check Dokploy configuration
+        id: dokploy
+        env:
+          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_APPLICATION_ID: ${{ secrets.DOKPLOY_APPLICATION_ID }}
+        run: |
+          configured=true
+          for name in DOKPLOY_URL DOKPLOY_API_KEY DOKPLOY_APPLICATION_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::warning::$name is not configured. Image published; automatic Dokploy deployment is not connected yet."
+              configured=false
+            fi
+          done
+          echo "configured=$configured" >> "$GITHUB_OUTPUT"
+          if [ "$configured" = false ]; then
+            echo "### Image published; Dokploy deployment skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "Configure DOKPLOY_URL, DOKPLOY_API_KEY, and DOKPLOY_APPLICATION_ID repository secrets, then rerun this workflow." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Verify Dokploy can pull the image
+        if: steps.dokploy.outputs.configured == 'true'
+        env:
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_USERNAME: ${{ github.repository_owner }}
+          IMAGE_REF: ${{ steps.image.outputs.name }}:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          DOCKER_CONFIG="$(mktemp -d)"
+          export DOCKER_CONFIG
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          if [ -n "$GHCR_PULL_TOKEN" ]; then
+            printf '%s' "$GHCR_PULL_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin >/dev/null 2>&1
+          fi
+          if ! docker manifest inspect "$IMAGE_REF" >/dev/null 2>&1; then
+            echo "::error::Dokploy cannot pull $IMAGE_REF. For a private image, configure GHCR_PULL_TOKEN with read:packages access. For a public image, make the GHCR package public."
+            exit 1
+          fi
+      - name: Pin Dokploy to this commit and deploy
+        if: steps.dokploy.outputs.configured == 'true'
+        env:
+          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_APPLICATION_ID: ${{ secrets.DOKPLOY_APPLICATION_ID }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_USERNAME: ${{ github.repository_owner }}
+          IMAGE_REF: ${{ steps.image.outputs.name }}:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          dokploy_url="${DOKPLOY_URL%/}"
+          request() {
+            curl --fail --show-error --silent --output /dev/null \
+              --proto '=https' --connect-timeout 10 --max-time 60 \
+              -X POST "$dokploy_url/api/$1" \
+              -H "x-api-key: $DOKPLOY_API_KEY" \
+              -H "Content-Type: application/json" --data "$2"
+          }
+          provider="$(jq -nc \
+            --arg id "$DOKPLOY_APPLICATION_ID" \
+            --arg image "$IMAGE_REF" \
+            --arg user "$GHCR_USERNAME" \
+            --arg token "$GHCR_PULL_TOKEN" \
+            '{applicationId:$id,dockerImage:$image,registryUrl:"ghcr.io",username:(if $token == "" then "" else $user end),password:$token}')"
+          request application.saveDockerProvider "$provider"
+          settings="$(jq -nc --arg id "$DOKPLOY_APPLICATION_ID" \
+            '{applicationId:$id,sourceType:"docker",autoDeploy:false,isPreviewDeploymentsActive:false}')"
+          request application.update "$settings"
+          request application.deploy "$(jq -nc --arg id "$DOKPLOY_APPLICATION_ID" '{applicationId:$id}')"
+          echo "### Dokploy deployment requested" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image: $IMAGE_REF" >> "$GITHUB_STEP_SUMMARY"
