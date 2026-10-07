@@ -22,48 +22,7 @@ bun run build
 bun run preview
 ```
 
-Deploy the `dist/` directory to any static host. Include the `pdfjs/` directory and `assets/` directory in the deployment. No backend or environment variables are needed.
-
-## GHCR and Dokploy
-
-Pushing to `main` runs the checks, builds a Linux amd64 container on GitHub, and publishes these tags:
-
-- `ghcr.io/michaelbonner/trim-crop-marks:latest`
-- `ghcr.io/michaelbonner/trim-crop-marks:<full-commit-sha>`
-
-The workflow uses the repository's built-in `GITHUB_TOKEN` to publish a new, repository-linked package. An optional `GHCR_TOKEN` secret can override this for an existing package with separate permissions.
-
-Create an application in Dokploy using the Docker source. Add `trim-crop-marks.bootpack.work` in its Domains tab, enable HTTPS, and set the container port to **8080**. No database, volume, or application environment variables are needed.
-
-Add these repository secrets in GitHub Settings → Secrets and variables → Actions:
-
-| Secret                   | Value                                                                                    |
-| ------------------------ | ---------------------------------------------------------------------------------------- |
-| `DOKPLOY_URL`            | `https://dokploy.bootpack.dev`                                                           |
-| `DOKPLOY_API_KEY`        | Your existing Dokploy API key with access to this application                            |
-| `DOKPLOY_APPLICATION_ID` | The application ID, not the project or environment ID                                    |
-| `GHCR_PULL_TOKEN`        | For a private GHCR package, a classic PAT with `read:packages` and access to the package |
-
-For an anonymous pull, make the GHCR package public and leave `GHCR_PULL_TOKEN` unset. Public repositories do not automatically make their container packages public. The workflow verifies pull access before changing Dokploy's registry credentials.
-
-When the three Dokploy secrets are present, the workflow pins the application to the commit tag, selects the Docker source, disables Dokploy's own Git auto-deploy, and requests a deployment. Runs are serialized so production updates cannot interleave. A deployment request being accepted is not a health check; confirm the rollout in Dokploy.
-
-Until those secrets are configured, the workflow publishes the image and explicitly reports that deployment was skipped. After configuring them, run **Build & Deploy (Dokploy)** manually from the Actions tab. Manual production deployments are restricted to `main`.
-
-The runtime uses unprivileged nginx. Hashed assets receive immutable caching, HTML is revalidated, PDF worker modules receive a JavaScript MIME type, and `/health` provides a container health check.
-
-To build and test the same container locally:
-
-```sh
-docker build -t trim-crop-marks:local .
-docker run --rm -p 8080:8080 trim-crop-marks:local
-```
-
-In another terminal:
-
-```sh
-PLAYWRIGHT_BASE_URL=http://localhost:8080 bun run test:e2e
-```
+The build outputs `dist/`, including the `pdfjs/` and `assets/` directories. Serve this directory with [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/). No backend or application environment variables are needed.
 
 ## How cropping works
 
@@ -79,6 +38,8 @@ This detector is deliberately conservative. Missing corners, angled marks, unusu
 Batches are limited to 20 files, 50 MB per file, 150 MB total, and 300 pages per file. Memory use also depends on document complexity and the device. Failed files do not prevent the rest of the batch from processing. Duplicate filenames receive numbered output names.
 
 ## Checks
+
+GitHub Actions runs formatting, crop-detection tests, and browser tests on pushes to `main`, pull requests, and manual runs.
 
 ```sh
 bun run test
