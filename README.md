@@ -24,6 +24,13 @@ bun run preview
 
 The build outputs `dist/`, including the `pdfjs/` and `assets/` directories. Serve this directory with [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/). No backend or application environment variables are needed.
 
+`wrangler.jsonc` holds the deployment configuration: the `dist/` assets directory, SPA fallback routing, and an empty `previews` block. The `previews` block is required for any command that creates a Preview deployment, which is what Workers Builds runs for pull requests.
+
+```sh
+bun run build
+npx wrangler deploy
+```
+
 ## How cropping works
 
 - An explicit, smaller `TrimBox` inside the visible page takes priority.
